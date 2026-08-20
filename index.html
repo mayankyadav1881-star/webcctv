@@ -95,7 +95,12 @@
   const controlsEl = document.getElementById('controls');
 
   const peerConfig = {
-    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    }
   };
 
   async function requestWakeLock() {
@@ -103,6 +108,7 @@
     catch (err) { console.log('Wake Lock error:', err); }
   }
 
+  // --- CAMERA MODE (Old Phone) ---
   async function startCamera() {
     const room = document.getElementById('roomCode').value.trim();
     if (!room) return;
@@ -114,34 +120,60 @@
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true
       });
-      videoEl.srcObject = stream; videoEl.muted = true;
+      videoEl.srcObject = stream;
+      videoEl.muted = true;
       statusEl.innerText = "Establishing secure link...";
       
       peer = new Peer(room + "-cam", peerConfig);
+      
       peer.on('open', () => {
         controlsEl.style.display = 'none';
-        statusEl.innerHTML = `TRANSMITTING <br> ID: ${room}`;
+        statusEl.innerHTML = `TRANSMITTING <br> ID: <b>${room}</b>`;
       });
-      peer.on('call', (call) => {
-        statusEl.innerText = "MONITOR CONNECTED";
-        call.answer(stream);
+
+      // When the viewer connects, the CAMERA calls the VIEWER with the video
+      peer.on('connection', (conn) => {
+        statusEl.innerText = "MONITOR CONNECTED - STREAMING";
+        peer.call(conn.peer, stream);
       });
-    } catch (err) { statusEl.innerText = "Access denied."; }
+
+      peer.on('error', (err) => {
+        statusEl.innerText = "Error: " + err.type;
+      });
+
+    } catch (err) { 
+      statusEl.innerText = "Camera access denied."; 
+    }
   }
 
+  // --- VIEWER MODE (Laptop / Current Device) ---
   function startViewer() {
     const room = document.getElementById('roomCode').value.trim();
     if (!room) return;
-    statusEl.innerText = "Syncing feed...";
+    statusEl.innerText = "Connecting to camera...";
+    
     peer = new Peer(undefined, peerConfig);
 
     peer.on('open', () => {
-      const call = peer.call(room + "-cam", new MediaStream());
-      call.on('stream', (remoteStream) => {
-        controlsEl.style.display = 'none';
-        videoEl.srcObject = remoteStream; videoEl.muted = false;
-        statusEl.innerText = "LIVE";
+      // 1. Send connection handshake to camera
+      const conn = peer.connect(room + "-cam");
+      
+      // 2. Prepare to receive the camera's incoming video call
+      peer.on('call', (call) => {
+        call.answer(); // answer the incoming call
+        
+        call.on('stream', (remoteStream) => {
+          controlsEl.style.display = 'none';
+          videoEl.srcObject = remoteStream;
+          videoEl.muted = true; // prevent autoplay blocking
+          videoEl.play();
+          statusEl.innerText = "LIVE FEED ACTIVE";
+        });
       });
+    });
+
+    peer.on('error', (err) => {
+      statusEl.innerText = "Camera not found. Ensure camera is active.";
     });
   }
 </script>
