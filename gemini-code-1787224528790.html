@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cinematic CCTV Monitor</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Montserrat:wght@300;400&display=swap');
+    
+    * { box-sizing: border-box; }
+    body { 
+      margin: 0; padding: 20px; 
+      display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh;
+      font-family: 'Montserrat', sans-serif;
+      background: linear-gradient(-45deg, #0f172a, #1e1b4b, #020617, #172554);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+      color: #e2e8f0;
+    }
+    
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .glass-panel { 
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 40px 30px; 
+      border-radius: 20px; 
+      max-width: 550px; width: 100%; 
+      text-align: center; 
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+
+    h2 { 
+      font-family: 'Cinzel', serif; 
+      margin-top: 0; color: #f8fafc; 
+      font-size: 28px; letter-spacing: 2px; 
+      font-weight: 400;
+    }
+
+    input { 
+      width: 100%; padding: 15px; margin: 15px 0; 
+      border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); 
+      background: rgba(0, 0, 0, 0.3); color: #fff; 
+      text-align: center; font-size: 14px; letter-spacing: 1px; outline: none;
+    }
+
+    input:focus { border-color: #94a3b8; }
+
+    button { 
+      width: 100%; padding: 15px; margin: 8px 0; 
+      border-radius: 8px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer; font-weight: 600; border: none; transition: all 0.3s ease;
+    }
+
+    .btn-camera { background: rgba(255, 255, 255, 0.9); color: #000; }
+    .btn-viewer { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, 0.5); }
+    
+    .btn-camera:hover { background: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+    .btn-viewer:hover { background: rgba(255, 255, 255, 0.1); }
+
+    video { 
+      width: 100%; max-height: 70vh; border-radius: 12px; 
+      background: #000; margin-top: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    }
+
+    #status { font-size: 12px; color: #94a3b8; margin-top: 15px; font-weight: 300; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+
+<div class="glass-panel">
+  <h2>Live Feed</h2>
+  
+  <div id="controls">
+    <input type="text" id="roomCode" value="my-home-cctv-789" />
+    <button class="btn-camera" onclick="startCamera()">Initialize Camera</button>
+    <button class="btn-viewer" onclick="startViewer()">Connect Monitor</button>
+  </div>
+
+  <div id="status">Awaiting Connection...</div>
+  <video id="stream" autoplay playsinline muted></video>
+</div>
+
+<script>
+  let peer = null;
+  const statusEl = document.getElementById('status');
+  const videoEl = document.getElementById('stream');
+  const controlsEl = document.getElementById('controls');
+
+  const peerConfig = {
+    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
+  };
+
+  async function requestWakeLock() {
+    try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } 
+    catch (err) { console.log('Wake Lock error:', err); }
+  }
+
+  async function startCamera() {
+    const room = document.getElementById('roomCode').value.trim();
+    if (!room) return;
+    statusEl.innerText = "Requesting lens access...";
+    requestWakeLock();
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+      videoEl.srcObject = stream; videoEl.muted = true;
+      statusEl.innerText = "Establishing secure link...";
+      
+      peer = new Peer(room + "-cam", peerConfig);
+      peer.on('open', () => {
+        controlsEl.style.display = 'none';
+        statusEl.innerHTML = `TRANSMITTING <br> ID: ${room}`;
+      });
+      peer.on('call', (call) => {
+        statusEl.innerText = "MONITOR CONNECTED";
+        call.answer(stream);
+      });
+    } catch (err) { statusEl.innerText = "Access denied."; }
+  }
+
+  function startViewer() {
+    const room = document.getElementById('roomCode').value.trim();
+    if (!room) return;
+    statusEl.innerText = "Syncing feed...";
+    peer = new Peer(undefined, peerConfig);
+
+    peer.on('open', () => {
+      const call = peer.call(room + "-cam", new MediaStream());
+      call.on('stream', (remoteStream) => {
+        controlsEl.style.display = 'none';
+        videoEl.srcObject = remoteStream; videoEl.muted = false;
+        statusEl.innerText = "LIVE";
+      });
+    });
+  }
+</script>
+</body>
+</html>
