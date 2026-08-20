@@ -65,6 +65,9 @@
     .btn-camera:hover { background: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
     .btn-viewer:hover { background: rgba(255, 255, 255, 0.1); }
 
+    .btn-unmute { background: rgba(239, 68, 68, 0.9); color: #fff; margin-top: 15px; display: none; }
+    .btn-unmute:hover { background: rgba(220, 38, 38, 1); box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+
     video { 
       width: 100%; max-height: 70vh; border-radius: 12px; 
       background: #000; margin-top: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
@@ -86,6 +89,7 @@
 
   <div id="status">Awaiting Connection...</div>
   <video id="stream" autoplay playsinline muted></video>
+  <button id="unmuteBtn" class="btn-unmute" onclick="enableAudio()">🔊 Turn On Audio</button>
 </div>
 
 <script>
@@ -93,6 +97,7 @@
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('stream');
   const controlsEl = document.getElementById('controls');
+  const unmuteBtn = document.getElementById('unmuteBtn');
 
   const peerConfig = {
     config: {
@@ -106,6 +111,12 @@
   async function requestWakeLock() {
     try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } 
     catch (err) { console.log('Wake Lock error:', err); }
+  }
+
+  // Activates audio when the user clicks the unmute button
+  function enableAudio() {
+    videoEl.muted = false;
+    unmuteBtn.style.display = 'none';
   }
 
   // --- CAMERA MODE (Old Phone) ---
@@ -131,7 +142,6 @@
         statusEl.innerHTML = `TRANSMITTING <br> ID: <b>${room}</b>`;
       });
 
-      // When the viewer connects, the CAMERA calls the VIEWER with the video
       peer.on('connection', (conn) => {
         statusEl.innerText = "MONITOR CONNECTED - STREAMING";
         peer.call(conn.peer, stream);
@@ -155,18 +165,22 @@
     peer = new Peer(undefined, peerConfig);
 
     peer.on('open', () => {
-      // 1. Send connection handshake to camera
       const conn = peer.connect(room + "-cam");
       
-      // 2. Prepare to receive the camera's incoming video call
       peer.on('call', (call) => {
-        call.answer(); // answer the incoming call
+        call.answer(); 
         
         call.on('stream', (remoteStream) => {
           controlsEl.style.display = 'none';
           videoEl.srcObject = remoteStream;
-          videoEl.muted = true; // prevent autoplay blocking
+          
+          // Video starts muted to bypass browser blocking
+          videoEl.muted = true; 
           videoEl.play();
+          
+          // Shows the unmute button once the video connects
+          unmuteBtn.style.display = 'block';
+          
           statusEl.innerText = "LIVE FEED ACTIVE";
         });
       });
